@@ -1,12 +1,17 @@
 name: Deploy (dev)
 
+# Continuous delivery: every push to main/develop builds the image for
+# validation and then deploys both services to the *dev* Hugging Face Spaces.
+# If the HF secrets are not configured, the workflow degrades gracefully -
+# local Docker Compose remains the verified runtime (docs/deployment.md).
+
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  build-and-validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,36 +19,60 @@ jobs:
       - name: Build Docker image (validation only, not pushed)
         run: docker build -t modern-dicompyler:${{ github.sha }} .
 
-      - name: Trigger platform deployment
+  deploy-api-dev:
+    needs: build-and-validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy API to the dev Hugging Face Space
         env:
-          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_API_SPACE: ${{ secrets.HF_API_SPACE_DEV }}
         run: |
-          if [ -n "$RENDER_DEPLOY_HOOK" ]; then
-            curl -fsS -X POST "$RENDER_DEPLOY_HOOK"
-            echo "Deploy hook triggered."
-          else
-            echo "::warning::RENDER_DEPLOY_HOOK secret is not configured; skipping remote deploy. Local Docker Compose remains the verified runtime (see docs/deployment.md)."
+          if [ -z "$HF_TOKEN" ] || [ -z "$HF_API_SPACE" ]; then
+            echo "::warning::HF_TOKEN or HF_API_SPACE_DEV not configured; skipping remote deploy."
+            exit 0
           fi
+          bash scripts/deploy_hf.sh api "$HF_API_SPACE"
+
+  deploy-dashboard-dev:
+    needs: [build-and-validate, deploy-api-dev]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy dashboard to the dev Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_DASHBOARD_SPACE: ${{ secrets.HF_DASHBOARD_SPACE_DEV }}
+          API_URL: ${{ secrets.DEV_API_URL }}
+        run: |
+          if [ -z "$HF_TOKEN" ] || [ -z "$HF_DASHBOARD_SPACE" ]; then
+            echo "::warning::HF_TOKEN or HF_DASHBOARD_SPACE_DEV not configured; skipping remote deploy."
+            exit 0
+          fi
+          bash scripts/deploy_hf.sh dashboard "$HF_DASHBOARD_SPACE"
 
   smoke-test:
+    needs: [deploy-api-dev, deploy-dashboard-dev]
     runs-on: ubuntu-latest
-    needs: build-and-deploy
     steps:
       - name: Post-deploy smoke test against /health
         env:
-          DEPLOYMENT_URL: ${{ secrets.DEPLOYMENT_URL }}
+          DEPLOYMENT_URL: ${{ secrets.DEV_API_URL }}
         run: |
           if [ -z "$DEPLOYMENT_URL" ]; then
-            echo "::warning::DEPLOYMENT_URL secret is not configured; skipping smoke test."
+            echo "::warning::DEV_API_URL secret is not configured; skipping smoke test."
             exit 0
           fi
-          for attempt in 1 2 3 4 5 6 7 8; do
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
             if curl -fsS "$DEPLOYMENT_URL/health"; then
               echo "Post-deploy smoke test passed."
               exit 0
             fi
-            echo "Attempt $attempt failed; retrying in 15s..."
-            sleep 15
+            echo "Attempt $attempt failed; retrying in 30s (Space image builds take a few minutes)..."
+            sleep 30
           done
           echo "::error::Post-deploy smoke test failed."
           exit 1

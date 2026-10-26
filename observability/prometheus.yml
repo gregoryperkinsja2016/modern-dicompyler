@@ -1,0 +1,14 @@
+# Prometheus scrape configuration for Modern Dicompyler (local Compose stack).
+# Scrapes the FastAPI /metrics endpoint exposed by the `api` service.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: modern-dicompyler-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000"]
+        labels:
+          service: modern-dicompyler-api
+          environment: local

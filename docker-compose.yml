@@ -1,6 +1,7 @@
 services:
   api:
     build: .
+    container_name: modern-dicompyler-api
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
@@ -14,6 +15,7 @@ services:
 
   dashboard:
     build: .
+    container_name: modern-dicompyler-dashboard
     command: streamlit run src/dashboard.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
     ports:
       - "8501:8501"
@@ -25,5 +27,61 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # --- Observability stack: metrics + logs collected, stored, and viewable in a UI ---
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: modern-dicompyler-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=3d
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.4.2
+    container_name: modern-dicompyler-loki
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.4.2
+    container_name: modern-dicompyler-promtail
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail-positions:/positions
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: modern-dicompyler-grafana
+    environment:
+      # Anonymous Admin is for the local demo only - Grafana is not exposed publicly.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_LOG_LEVEL: warn
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+
 volumes:
   dicomrt-data:
+  promtail-positions:

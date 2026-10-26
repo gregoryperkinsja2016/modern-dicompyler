@@ -23,8 +23,16 @@ uv run ruff check .                       # lint (must pass)
 uv run pytest                             # unit + integration tests (must pass)
 uv run uvicorn src.main:app --reload      # API on http://localhost:8000
 uv run streamlit run src/dashboard.py     # UI on http://localhost:8501
-docker compose up --build                 # full stack (API :8000, UI :8501)
+docker compose up --build                 # full stack (API :8000, UI :8501, Grafana :3000)
+make up / make test / make lint / make demo   # Makefile shortcuts
+bash scripts/create_issues.sh             # mirror the backlog to the public GitHub tracker
 ```
+
+## Task tracker usage (required)
+
+- Every backlog epic exists as a GitHub Issue (create with `bash scripts/create_issues.sh`; idempotent).
+- Every pull request must close at least one issue (`Closes #N` in the PR body - see `.github/PULL_REQUEST_TEMPLATE.md`).
+- Runtime alerts ("`on-call`" label) also enter the tracker automatically via `src/alerting.py`.
 
 ## Agent roles
 
@@ -35,8 +43,8 @@ docker compose up --build                 # full stack (API :8000, UI :8501)
 | Backend Engineer | FastAPI endpoints, persistence, request handling | `src/main.py`, `src/db.py`, `src/models.py`, `src/schemas.py` |
 | Frontend/Streamlit Engineer | Dashboard tabs, empty states, API client | `src/dashboard.py` |
 | QA Engineer | Unit + integration tests, structured-error coverage | `tests/**` |
-| DevOps Engineer | Docker, Compose, GitHub Actions CI/CD | `Dockerfile`, `docker-compose.yml`, `.github/workflows/` |
-| SRE | Logging, metrics, health, alert rules | `src/telemetry.py`, `src/alerting.py`, `docs/observability.md` |
+| DevOps Engineer | Docker, Compose, GitHub Actions CI/CD, Hugging Face deployment | `Dockerfile`, `docker-compose.yml`, `deploy/hf/`, `scripts/deploy_hf.sh`, `.github/workflows/` |
+| SRE | Logging, metrics, health, alert rules, Grafana/Loki stack | `src/telemetry.py`, `src/alerting.py`, `observability/`, `docs/observability.md` |
 | On-Call Responder | Diagnose `on-call` issues, propose (never execute) rollbacks | `scripts/on_call_diagnose.py`, `.github/workflows/on-call-responder.yml` |
 
 ## Human supervision workflow
@@ -53,7 +61,7 @@ A change is done when:
 
 - `uv sync`, `uv run ruff check .`, and `uv run pytest` all pass locally;
 - the Streamlit dashboard works against the API (demo case, upload path, history);
-- Docker Compose still builds and both services come up healthy;
+- Docker Compose still builds and all services (app + observability) come up healthy;
 - no PHI, no secrets, no fabricated clinical values are introduced;
 - relevant docs (`README.md`, `docs/*`, `backlog.md`, `CHANGELOG.md`) are updated;
-- a pull request exists and CI is green.
+- the PR is linked to its task tracker issue (`Closes #N`) and CI is green.

@@ -2,10 +2,10 @@
 
 ## Verified runtime (this submission)
 
-The **verified runtime for this project is local Docker Compose**. No public cloud URL is attached to the submission.
+The **verified runtime for this project is local Docker Compose**. One command starts the whole stack (application + SQLite volume + observability UI):
 
 ```bash
-docker compose up --build
+docker compose up --build      # or: make up
 ```
 
 | Service | URL | Notes |
@@ -13,6 +13,8 @@ docker compose up --build
 | API | <http://localhost:8000> | uvicorn, reads `RTQA_DATA_DIR=/app/data` |
 | API docs | <http://localhost:8000/docs> | Swagger UI |
 | Dashboard | <http://localhost:8501> | Streamlit, `API_URL=http://api:8000` |
+| Grafana UI | <http://localhost:3000> | pre-provisioned "Modern Dicompyler - User Journey" dashboard |
+| Prometheus UI | <http://localhost:9090> | metric browser |
 | Health | <http://localhost:8000/health> | also used by the container HEALTHCHECK |
 | Metrics | <http://localhost:8000/metrics> | Prometheus text format |
 
@@ -26,25 +28,59 @@ uv run uvicorn src.main:app --reload    # terminal 1
 uv run streamlit run src/dashboard.py   # terminal 2
 ```
 
-## Cloud deployment (optional)
+## Cloud deployment (Hugging Face Spaces - free public URL)
 
-`deploy-dev.yml` runs on every merge to `main` and supports any simple platform that offers an HTTP deploy hook (Render, Railway, Fly.io, Hugging Face Spaces). Without secrets configured the workflow still validates the Docker build and skips remote steps with a warning.
+The application ships first-class **Hugging Face Spaces** support (Docker SDK, `app_port: 7860`). Two Spaces make up the deployment: one for the API, one for the dashboard.
 
-### Required repository secrets
+### One-time setup (human, ~10 minutes)
+
+1. Create a Hugging Face **write token**: <https://huggingface.co/settings/tokens>.
+2. Create two empty Docker Spaces: `modern-dicompyler-api` and `modern-dicompyler-dashboard` (New Space -> SDK: Docker -> blank template). Creating them up front is optional - the script can push to new names and HF creates them on first push.
+3. In the **dashboard Space**: Settings -> Variables and secrets -> add variable `API_URL` = the public URL of the API Space (e.g. `https://<owner>-modern-dicompyler-api.hf.space`).
+
+### Deploy manually (either service, any time)
+
+```bash
+HF_TOKEN=hf_xxx bash scripts/deploy_hf.sh api        <owner>/modern-dicompyler-api
+HF_TOKEN=hf_xxx API_URL=https://<owner>-modern-dicompyler-api.hf.space \
+               bash scripts/deploy_hf.sh dashboard   <owner>/modern-dicompyler-dashboard
+```
+
+The script stages a minimal Space repo (Space card + `Dockerfile` + `src/` + lockfile), commits it, and pushes it to the Space's git remote; HF builds the image. Spaces sleep after ~48h of inactivity on the free tier and their filesystem is ephemeral (the demo case re-populates history in one click).
+
+### Deploy automatically (CD, via GitHub Actions)
+
+`deploy-dev.yml` runs on every push to `main`/`develop`: it validates the Docker build, deploys **both services** to the dev Spaces with `scripts/deploy_hf.sh`, and smoke-tests `/health`.
+
+Required repository secrets:
 
 | Secret | Purpose | Required? |
 | --- | --- | --- |
-| `RENDER_DEPLOY_HOOK` | Deploy-hook URL (POST) to trigger a platform deploy | optional |
-| `DEPLOYMENT_URL` | Public base URL used by the post-deploy `/health` smoke test and the on-call responder | optional |
-| `KNOWN_GOOD_IMAGE_TAG` | Last known-good image/tag; enables a rollback PR proposal | optional |
+| `HF_TOKEN` | Hugging Face write token used to push to the Spaces | optional (needed for CD) |
+| `HF_API_SPACE_DEV` / `HF_DASHBOARD_SPACE_DEV` | `<owner>/space-name` targets for the dev deployment | optional |
+| `DEV_API_URL` | public base URL of the dev API Space (smoke test + dashboard `API_URL`) | optional |
+| `HF_API_SPACE_PROD` / `HF_DASHBOARD_SPACE_PROD` | `<owner>/space-name` targets for production | optional |
+| `PROD_API_URL` | public base URL of the production API Space | optional |
+| `KNOWN_GOOD_IMAGE_TAG` | Last known-good tag; enables a rollback proposal by the on-call responder | optional |
 
 `GITHUB_TOKEN` is provided automatically by Actions. **Never commit secrets** - they are read from the environment only, and nothing in the codebase logs them.
 
-### Deploy flow
+### Deploy flow (dev)
 
-1. Push/merge to `main`.
-2. `build-and-deploy` job: `docker build` validation, then POSTs the deploy hook if configured.
-3. `smoke-test` job: polls `$DEPLOYMENT_URL/health` every 15s (8 attempts); fails the workflow if unhealthy.
+1. Push/merge to `main` or `develop`.
+2. `build-and-validate`: `docker build` must succeed.
+3. `deploy-api-dev` -> `deploy-dashboard-dev`: push each service to its Space via `scripts/deploy_hf.sh` (skipped with a warning when secrets are unset).
+4. `smoke-test`: polls `$DEV_API_URL/health` every 30s (10 attempts; Space image builds take a few minutes); fails the workflow if unhealthy.
+
+### Deploy to production (manual gate)
+
+Production is never deployed automatically. Run `deploy-prod.yml` by hand:
+
+1. Actions -> **Deploy (production)** -> *Run workflow*.
+2. Type `deploy` in the confirmation input.
+3. The job runs under the `production` **environment**; configure required reviewers in Settings -> Environments -> production so a second human must approve.
+
+This satisfies the course's CI -> CD(dev) -> manual production gate.
 
 ## Rollback procedure
 

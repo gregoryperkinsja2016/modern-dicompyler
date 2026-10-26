@@ -1,0 +1,45 @@
+# Hugging Face Space (Docker SDK) - Modern Dicompyler Streamlit dashboard.
+# HF injects PORT=7860; Streamlit must listen on 0.0.0.0:$PORT.
+# The Space needs an `API_URL` variable (Settings -> Variables and secrets)
+# pointing at the public URL of the API Space, e.g.
+#   API_URL = https://<owner>-modern-dicompyler-api.hf.space
+# This file is copied to the Space repo root as `Dockerfile` by scripts/deploy_hf.sh.
+
+# ---------- Build stage: install dependencies with uv ----------
+FROM python:3.12-slim AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never
+
+WORKDIR /app
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project --no-dev
+
+COPY src ./src
+
+# ---------- Runtime stage: non-root ----------
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/app/.venv/bin:$PATH" \
+    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+
+RUN groupadd --system appgroup && useradd --system --gid appgroup --create-home appuser
+
+WORKDIR /app
+
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/src /app/src
+
+RUN chown -R appuser:appgroup /app
+
+USER appuser
+
+EXPOSE 7860
+
+CMD ["sh", "-c", "streamlit run src/dashboard.py --server.port ${PORT:-7860} --server.address 0.0.0.0 --server.headless true"]

@@ -1,0 +1,73 @@
+name: Deploy (production)
+
+# Manual deploy to production. This is the "manual deploy to production" gate:
+# it only ever runs when a human clicks "Run workflow", types the confirmation
+# word, and (optionally) waits for the `production` environment reviewers.
+# Configure: repo Settings -> Environments -> production -> required reviewers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm the production deployment'
+        required: true
+        default: ""
+
+jobs:
+  deploy-production:
+    if: github.event.inputs.confirm == 'deploy'
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record approval context
+        run: |
+          echo "Production deploy approved by @${{ github.actor }} at ${{ github.event.repository.updated_at }}"
+          echo "Commit: ${{ github.sha }}"
+
+      - name: Deploy API to the production Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_API_SPACE: ${{ secrets.HF_API_SPACE_PROD }}
+        run: |
+          if [ -z "$HF_TOKEN" ] || [ -z "$HF_API_SPACE" ]; then
+            echo "::error::HF_TOKEN or HF_API_SPACE_PROD is not configured; cannot deploy to production."
+            exit 1
+          fi
+          bash scripts/deploy_hf.sh api "$HF_API_SPACE"
+
+      - name: Deploy dashboard to the production Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_DASHBOARD_SPACE: ${{ secrets.HF_DASHBOARD_SPACE_PROD }}
+          API_URL: ${{ secrets.PROD_API_URL }}
+        run: |
+          if [ -z "$HF_DASHBOARD_SPACE" ]; then
+            echo "::error::HF_DASHBOARD_SPACE_PROD is not configured; cannot deploy to production."
+            exit 1
+          fi
+          bash scripts/deploy_hf.sh dashboard "$HF_DASHBOARD_SPACE"
+
+  smoke-test:
+    needs: deploy-production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post-deploy smoke test against /health
+        env:
+          DEPLOYMENT_URL: ${{ secrets.PROD_API_URL }}
+        run: |
+          if [ -z "$DEPLOYMENT_URL" ]; then
+            echo "::error::PROD_API_URL is not configured; cannot smoke-test production."
+            exit 1
+          fi
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS "$DEPLOYMENT_URL/health"; then
+              echo "Production smoke test passed."
+              exit 0
+            fi
+            echo "Attempt $attempt failed; retrying in 30s..."
+            sleep 30
+          done
+          echo "::error::Production smoke test failed."
+          exit 1

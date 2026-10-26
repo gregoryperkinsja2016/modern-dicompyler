@@ -55,12 +55,14 @@ Status legend: `[x]` completed, `[ ]` pending. Dates refer to the 1.0.0 implemen
 - [x] Local Docker Compose documented as the verified runtime (`docs/deployment.md`)
 - [x] Cloud deploy path via platform hook secrets (Render/Railway/Fly.io/HF Spaces)
 - [x] Rollback procedure documented
-- [ ] Public cloud URL (optional; requires human to create platform account and set secrets)
+- [x] Hugging Face Spaces deployment path: `PORT`-aware images (`deploy/hf/`), `scripts/deploy_hf.sh`, dashboard `API_URL` variable
+- [ ] Public cloud URL (requires human to create HF account/token and either set repo secrets for CD or run the deploy script)
 
 ## CI/CD
 
 - [x] `ci.yml`: uv install, Ruff, pytest on PRs and pushes to main
-- [x] `deploy-dev.yml`: Docker build validation, optional deploy hook, `/health` smoke test
+- [x] `deploy-dev.yml`: Docker build validation, auto-deploy of both services to dev (Hugging Face Spaces), `/health` smoke test
+- [x] `deploy-prod.yml`: manual production deploy (`workflow_dispatch` + typed confirmation + protected `production` environment)
 - [x] Secrets documented; no secrets committed
 
 ## Observability
@@ -68,6 +70,14 @@ Status legend: `[x]` completed, `[ ]` pending. Dates refer to the 1.0.0 implemen
 - [x] Structured JSON logging with trace_id/request_id/route/status_code/duration_ms/outcome/error_class
 - [x] Prometheus metrics: `rtqa_analysis_requests_total{route,outcome}`, `rtqa_analysis_duration_seconds`, `rtqa_analysis_failures_total{error_class}`, `rtqa_database_up`
 - [x] No-PHI/no-secrets logging rules documented and enforced
+- [x] Signals collected, stored, and viewable in a UI: Prometheus + Loki + Promtail + Grafana (provisioned dashboard) in Compose (`observability/`)
+- [x] Trace-ID correlation: API error envelope -> JSON logs -> Loki query (LogQL) -> Grafana logs panel
+
+## Task tracker
+
+- [x] Public tracker bootstrap: `scripts/create_issues.sh` (idempotent, one issue per epic with acceptance criteria)
+- [x] Issue templates (task, bug) + PR template enforcing `Closes #N` linkage
+- [ ] Human runs the script once after pushing to GitHub to materialise the issues
 
 ## Alerting
 

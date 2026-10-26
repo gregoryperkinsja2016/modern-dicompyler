@@ -69,6 +69,23 @@ If `GITHUB_TOKEN`/`GITHUB_REPO` are unset (local development), alerts are logged
 
 ## Dashboards
 
+### Local stack (collected, stored, and viewable in a UI)
+
+`docker compose up --build` starts the full observability stack alongside the app:
+
+| Component | Role |
+| --- | --- |
+| Prometheus (`localhost:9090`) | scrapes and **stores** the API metrics (15s interval) |
+| Loki (`localhost:3100`) | **stores** the structured JSON logs pushed by Promtail |
+| Promtail | ships api/dashboard container logs to Loki; JSON-parses `trace_id`, `level`, `event`, `route`, `status_code` |
+| Grafana (`localhost:3000`) | the **UI**: datasources + "Modern Dicompyler - User Journey" dashboard are provisioned automatically from `observability/grafana/` |
+
+The pre-provisioned dashboard shows: DB up (stat), request rate by route/outcome, p95 analysis duration, failures by error class, success vs failure rates, and a live logs panel in which any `trace_id` from an API error envelope can be followed to the exact request.
+
+Configuration lives in `observability/` (`prometheus.yml`, `loki/loki-config.yml`, `promtail/promtail-config.yml`, `grafana/provisioning/`, `grafana/dashboards/`). Grafana anonymous Admin is enabled for the local demo only; the UI is never exposed publicly.
+
+### Raw queries
+
 Any Prometheus instance can scrape `/metrics`. Minimal useful queries:
 
 ```promql
@@ -77,4 +94,10 @@ sum by (outcome) (rate(rtqa_analysis_requests_total[5m]))
 histogram_quantile(0.95, sum by (le, route) (rate(rtqa_analysis_duration_seconds_bucket[5m])))
 topk(5, sum by (error_class) (rate(rtqa_analysis_failures_total[5m])))
 min(rtqa_database_up)
+```
+
+Equivalent LogQL (Grafana Explore, Loki datasource) - correlate a trace id end to end:
+
+```logql
+{container="modern-dicompyler-api"} | json | trace_id="<paste-trace-id>"
 ```

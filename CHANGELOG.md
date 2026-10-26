@@ -2,6 +2,25 @@
 
 All notable changes to Modern Dicompyler are documented here.
 
+## [1.1.0] - 2026-10-26
+
+Submission-readiness pass: closes the remaining course rubric gaps (deployment, full CD, observability UI, public task tracker).
+
+### Added
+
+- **Observability UI** (`observability/`): Prometheus (scrape + store), Loki + Promtail (log collection + storage with JSON parsing of `trace_id`/`level`/`event`), and Grafana with auto-provisioned datasources and a pre-built "Modern Dicompyler - User Journey" dashboard (request rate, p95 duration, failures by error class, DB up, trace-id-correlated logs). Included in `docker compose up` (single command, six services).
+- **Hugging Face Spaces deployment** (`deploy/hf/Dockerfile.api`, `deploy/hf/Dockerfile.dashboard`, `scripts/deploy_hf.sh`): `PORT`-aware Dockerfiles (`app_port: 7860`), Space card generation, force-push deploy of each service; dashboard Space consumes an `API_URL` variable.
+- **Full CD + manual production gate** (`.github/workflows/`): `deploy-dev.yml` now deploys both services to the dev Spaces on every push to main/develop and smoke-tests `/health`; new `deploy-prod.yml` performs manual production deploys (`workflow_dispatch` + typed confirmation + protected `production` environment).
+- **Public task tracker** (`scripts/create_issues.sh`, `.github/ISSUE_TEMPLATE/`, `.github/PULL_REQUEST_TEMPLATE.md`): idempotent bootstrap of one GitHub Issue per backlog epic with acceptance criteria; PR template enforces `Closes #N` linkage as tracker evidence.
+- **Makefile**: `make up/down/test/lint/demo/logs/dev-api/dev-ui` single-command developer UX.
+
+### Changed
+
+- Root `Dockerfile` honours the `PORT` environment variable (defaults to 8000) so the same image runs on Compose and on platforms that inject the port.
+- Compose services get deterministic `container_name`s (`modern-dicompyler-api`, ...) used by Promtail's relabel/keep rules.
+- On-call responder now probes the deployment via the `DEV_API_URL` secret (was `DEPLOYMENT_URL`).
+- `deploy-dev.yml` triggers on `main` and `develop`; smoke test retries 10×30s to accommodate Space image builds.
+
 ## [1.0.0] - 2026-10-26
 
 Project 1 submission for the DataTalks AI Dev Tools Zoomcamp.
