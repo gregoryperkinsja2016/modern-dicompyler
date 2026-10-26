@@ -1,0 +1,49 @@
+name: Deploy (dev)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image (validation only, not pushed)
+        run: docker build -t modern-dicompyler:${{ github.sha }} .
+
+      - name: Trigger platform deployment
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -n "$RENDER_DEPLOY_HOOK" ]; then
+            curl -fsS -X POST "$RENDER_DEPLOY_HOOK"
+            echo "Deploy hook triggered."
+          else
+            echo "::warning::RENDER_DEPLOY_HOOK secret is not configured; skipping remote deploy. Local Docker Compose remains the verified runtime (see docs/deployment.md)."
+          fi
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    needs: build-and-deploy
+    steps:
+      - name: Post-deploy smoke test against /health
+        env:
+          DEPLOYMENT_URL: ${{ secrets.DEPLOYMENT_URL }}
+        run: |
+          if [ -z "$DEPLOYMENT_URL" ]; then
+            echo "::warning::DEPLOYMENT_URL secret is not configured; skipping smoke test."
+            exit 0
+          fi
+          for attempt in 1 2 3 4 5 6 7 8; do
+            if curl -fsS "$DEPLOYMENT_URL/health"; then
+              echo "Post-deploy smoke test passed."
+              exit 0
+            fi
+            echo "Attempt $attempt failed; retrying in 15s..."
+            sleep 15
+          done
+          echo "::error::Post-deploy smoke test failed."
+          exit 1

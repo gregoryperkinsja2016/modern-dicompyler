@@ -1,0 +1,46 @@
+[project]
+name = "modern-dicompyler"
+version = "1.0.0"
+description = "Modern Dicompyler - a web-based, read-only DICOM-RT inspection platform (FastAPI + Streamlit + SQLite). Project 1 for the DataTalks AI Dev Tools Zoomcamp."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Modern Dicompyler contributors" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "sqlalchemy>=2.0",
+    "pydicom>=2.4.4,<3",
+    "dicompyler-core>=0.5.6",
+    "streamlit>=1.37",
+    "requests>=2.32",
+    "pandas>=2.0",
+    "prometheus-client>=0.20",
+    "python-multipart>=0.0.9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "httpx>=0.27",
+    "ruff>=0.6",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/main.py" = ["B008"]
+"src/dashboard.py" = ["E402"]
+"tests/conftest.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

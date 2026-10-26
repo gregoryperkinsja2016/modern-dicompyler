@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+dist/
+build/
+
+# Local runtime data (SQLite database lives here)
+data/
+
+# Environment / secrets - never commit these
+.env
+.env.*
+
+# OS
+.DS_Store
